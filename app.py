@@ -99,5 +99,3 @@ def metrics():
     ]
     return '\n'.join(metrics) + '\n', 200, {'Content-Type': 'text/plain; version=0.0.4'}
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
