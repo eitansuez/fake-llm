@@ -11,14 +11,22 @@ LORA_B_RESPONSE = "This is fake LLM with LoRA-B. Salutations from module B!"
 # Simple metrics tracking (in-memory, resets on restart)
 request_count = 0
 total_latency = 0.0
+running_requests = 0  # Simulate requests currently "running"
+waiting_requests = 0  # Simulate requests in queue
 
 @app.route('/v1/completions', methods=['POST'])
 def completions():
-    global request_count, total_latency
+    global request_count, total_latency, running_requests, waiting_requests
     start_time = time.time()
 
     data = request.get_json()
     prompt = data.get('prompt', 'No prompt provided')
+
+    # Simulate some queueing behavior
+    waiting_requests += 1
+    time.sleep(0.005)  # Fake queue delay
+    waiting_requests -= 1
+    running_requests += 1
 
     # Check for LoRA selection (via query param, header, or body)
     lora_module = (
@@ -39,7 +47,7 @@ def completions():
         response_text = BASE_RESPONSE
         model_name = "fake-llm"
 
-    # Simulate some processing time (optional, for realism)
+    # Simulate processing time
     time.sleep(0.01)  # 10ms fake latency
 
     # Build OpenAI-like response
@@ -67,23 +75,27 @@ def completions():
     latency = time.time() - start_time
     request_count += 1
     total_latency += latency
+    running_requests -= 1  # Request "finishes"
 
     return jsonify(response), 200
 
 @app.route('/metrics', methods=['GET'])
 def metrics():
-    global request_count, total_latency
-    # Prometheus-style text format
+    global request_count, total_latency, running_requests, waiting_requests
+    # Prometheus-style text format mimicking vLLM metric names
     metrics = [
-        '# HELP fake_llm_requests_total Total number of requests processed',
-        '# TYPE fake_llm_requests_total counter',
-        f'fake_llm_requests_total {request_count}',
-        '# HELP fake_llm_latency_seconds Total latency of all requests in seconds',
-        '# TYPE fake_llm_latency_seconds gauge',
-        f'fake_llm_latency_seconds {total_latency:.4f}',
-        '# HELP fake_llm_avg_latency_seconds Average latency per request in seconds',
-        '# TYPE fake_llm_avg_latency_seconds gauge',
-        f'fake_llm_avg_latency_seconds {(total_latency / request_count if request_count > 0 else 0):.4f}',
+        '# HELP vllm:num_requests_running Number of requests currently running on GPU.',
+        '# TYPE vllm:num_requests_running gauge',
+        f'vllm:num_requests_running {running_requests}',
+        '# HELP vllm:num_requests_waiting Number of requests waiting to be processed.',
+        '# TYPE vllm:num_requests_waiting gauge',
+        f'vllm:num_requests_waiting {waiting_requests}',
+        '# HELP vllm:gpu_cache_usage_perc GPU KV-cache usage. 1 means 100 percent usage.',
+        '# TYPE vllm:gpu_cache_usage_perc gauge',
+        f'vllm:gpu_cache_usage_perc 0.5',  # Fake static value (50%)
+        '# HELP vllm:lora_requests_info Running stats on LoRA requests.',
+        '# TYPE vllm:lora_requests_info gauge',
+        f'vllm:lora_requests_info{{running_lora_adapters="lora-a:1,lora-b:0",max_lora="2",waiting_lora_adapters="lora-a:0,lora-b:0"}} {int(time.time())}',
     ]
     return '\n'.join(metrics) + '\n', 200, {'Content-Type': 'text/plain; version=0.0.4'}
 
